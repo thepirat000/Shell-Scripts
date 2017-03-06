@@ -75,7 +75,7 @@ try
 }
 catch
 {
-    write-host “Error while trying to execute grunt:” -ForegroundColor Red
-    write-host “Exception Type: $($_.Exception.GetType().FullName)” -ForegroundColor Red
-    write-host “Exception Message: $($_.Exception.Message)” -ForegroundColor Red
+    write-host "Error while trying to execute grunt:" -ForegroundColor Red
+    write-host "Exception Type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
+    write-host "Exception Message: $($_.Exception.Message)" -ForegroundColor Red
 }
