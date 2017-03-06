@@ -7,14 +7,16 @@
 #	node: Path to nodejs executable (if it's not on the system PATH)
 #	npm: Path to the npm command (defaults to npm.cmd in the same sirectory as the given node path)
 #	grunt_args: commands to execute with grunt (space separated)
+#   cache_clean: indicates if npm clean cache must bu executed before the grunt
 #
 # Example:
-#    ./grunt.ps1 -node:"c:\path_to_node\node.exe" -grunt_args:"command1 command2"
+#    ./grunt.ps1 -node:"c:\path_to_node\node.exe" -grunt_args:"doVerticalJSBundle doCommonJSBundle"
 #
 param(
 [String]$node="node.exe",
 [String]$npm="",
-[String]$grunt_args="")
+[String]$grunt_args="",
+[Int32]$cache_clean=0)
 
 try
 {
@@ -39,16 +41,37 @@ try
 
     Write-Host "Will execute the following", $commands.Count ,"grunt commands:", $commands -ForegroundColor "green"
 
+	if ($cache_clean -eq 1) {
+		Write-Host "Cleaning npm cache" -ForegroundColor "green"
+		& npm cache clean
+	}
+
     & npm config set loglevel error
 
     Write-Host "Installing grunt-cli locally" -ForegroundColor "green"
     & npm install grunt-cli
 
+	if ($LastExitCode -ne 0) {
+		Write-Host "Error $LastExitCode Installing grunt-cli" -ForegroundColor "red"
+		exit $LastExitCode
+	}
+
     Write-Host "Installing dependencies" -ForegroundColor "green"
     & npm install
 
+	if ($LastExitCode -ne 0) {
+		Write-Host "Error $LastExitCode Installing dependencies" -ForegroundColor "red"
+		exit $LastExitCode
+	}
+
     Write-Host "Executing grunt", $commands -ForegroundColor "green"
     & node node_modules\grunt-cli\bin\grunt --stack @commands
+
+	if ($LastExitCode -ne 0) {
+		Write-Host "Error $LastExitCode Executing grunt" -ForegroundColor "red"
+		exit $LastExitCode
+	}
+
 }
 catch
 {
