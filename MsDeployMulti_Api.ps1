@@ -1,4 +1,4 @@
-#Script parameters:
+﻿#Script parameters:
 #
 #  serverNames: Comma separated host names or IP addresses of the servers to deploy to
 #  packageFile: Relative path to the web package .zip file
@@ -9,9 +9,11 @@
 #  environment: Used to identify the X on "appsettings.X.json" file to use
 #  stopOnError: 1 or 0. 1 to indicate the script must stop upon any deployment error. 0 to indicate the script must succeed if at least one server was deployed successfully. (Default is 0).
 #  MSDEPLOY: MsDeploy.exe path. (default is c:\Program Files (x86)\iis\Microsoft Web Deploy V3\msdeploy.exe).
+#  switchServerNames: Comma separated host names or IP addresses of the servers that must be switched on/off (i.e. when deploying to BC-Farm put the hostnames of DE-Farm)
+#  eventSource: An optional event source name to create on the Event Log of the target servers. (Default is "" meaning no event source will be created)
 #
 # For Example:
-# cmd /c powershell -noprofile -nologo -executionpolicy Bypass -file MsDeployMulti_Web.ps1 -serverNames:"server1,server2,server3" -packageFile:"Package\YourPackage.zip" -siteName:YourSiteName -appOfflineFile:"C:\Tools\app_offline_template.htm" -username:some_user -password:p@ssw0rd -stopOnError:1
+# cmd /c powershell -noprofile -nologo -executionpolicy Bypass -file MsDeployMulti_Web.ps1 -serverNames:"server1,server2,server3" -packageFile:"Package\Bizworks.Report.Service.Api.zip" -siteName:Bizworks.Report.Service.Api -appOfflineFile:"C:\Tools\app_offline_template.htm" -username:some_user -password:p@ssw0rd -stopOnError:1
 #
 param([Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9,\.\-_]+$')][ValidateNotNullOrEmpty()][String]$serverNames='', 
 [Parameter(Mandatory=$true)][String]$packageFile='',
@@ -21,7 +23,9 @@ param([Parameter(Mandatory=$true)][ValidatePattern('^[A-Za-z0-9,\.\-_]+$')][Vali
 [Parameter(Mandatory=$true)][String]$password='',
 [Parameter(Mandatory=$true)][String]$environment='',
 [String]$MSDEPLOY='c:\Program Files (x86)\iis\Microsoft Web Deploy V3\msdeploy.exe',
-[int]$stopOnError
+[int]$stopOnError,
+[String]$switchServerNames='',
+[String]$eventSource=''
 ) 
 
 function ExecuteMsDeploy_AppOffline ()
@@ -78,11 +82,82 @@ function ExecuteMsDeploy_Package ()
         '-disableLink:CertificateExtension',
 		('-replace:objectName=filePath,match=appsettings\.' + $environment + '\.json,replace=appsettings.json');
 
+	if ($environment.Length -gt 0) {
+		$msdeployArguments += ('-skip:objectName=filePath,absolutePath=.*appsettings\.json');
+	}
+
     Write-Host "Will execute MSDEPLOY (PACKAGE) with following parameters:" -foregroundcolor "yellow";
     Write-Host "-server =", $server -foregroundcolor "yellow";
     Write-Host "-packageFile =", $packageFile  -foregroundcolor "yellow";
     Write-Host "-siteName =", $siteName  -foregroundcolor "yellow";
+	Write-Host "-environment = $environment" -foregroundcolor "yellow";
     & $MSDEPLOY $msdeployArguments
+}
+
+function ExecuteSwitchOn ([String]$hostnames)
+{
+	Write-Host "Starting SWITCH NLB ON task for servers $hostnames" -foregroundcolor "green";
+	
+	# Creates the App_Data/NlbControl.Online file on each server
+	$hostnames.Split(",") | ForEach {
+		$server = $_.Trim();
+		$msdeployArguments = 
+			'-verb:sync',
+			'-allowUntrusted',
+			('-source:contentPath="' + $onlineFile + '"'),
+			('-dest:contentPath=' + $siteName + '/App_Data/NlbControl.Online,computerName="' + $server + '",UserName="' + $username + '",Password="' + $password + '",AuthType="NTLM",includeAcls="False"');
+
+		Write-Host "Will execute MSDEPLOY (SWITCH NLB ON) on $server" -foregroundcolor "yellow";
+
+		& $MSDEPLOY $msdeployArguments
+	}
+}
+
+function ExecuteSwitchOff ([String]$hostnames)
+{
+	Write-Host "Starting SWITCH NLB OFF task for servers $hostnames" -foregroundcolor "green";
+	
+	# Deletes the App_Data/NlbControl.Online file from each server
+	$hostnames.Split(",") | ForEach {
+		$server = $_.Trim();
+		$msdeployArguments = 
+			'-verb:delete',
+			'-allowUntrusted',
+			('-dest:contentPath=' + $siteName + '/App_Data/NlbControl.Online,computerName="' + $server + '",UserName="' + $username + '",Password="' + $password + '",AuthType="NTLM",includeAcls="False"');
+
+        Write-Host "Will execute MSDEPLOY (SWITCH NLB OFF) on $server" -foregroundcolor "yellow";
+
+        Try 
+        {
+		    & $MSDEPLOY $msdeployArguments
+        }
+        Catch 
+        {
+            if ($_.Exception.Message.Contains("FileOrFolderNotFound")) {
+                Write-Host "Skipping file not found exception removing NlbControl.Online on $server" -foregroundcolor "yellow";
+            } else {
+                Throw;
+            }
+        }
+    }
+}
+
+function ExecuteEventSourceCreation ([String]$server)
+{
+	if ($eventSource.length -gt 0) {
+		Write-Host "Will execute event source creation on $server" -foregroundcolor "yellow";
+		$passwordSecure = $password | ConvertTo-SecureString -asPlainText -Force
+		$credential = New-Object System.Management.Automation.PSCredential($username, $passwordSecure)
+		$ScriptBlockContent = { New-EventLog -ComputerName $args[0] -Source "$args[1]" -LogName "Application" -Verbose -ErrorAction Ignore }
+        Try 
+        {
+		    Invoke-Command -ComputerName "$server" -Credential $credential -ScriptBlock $ScriptBlockContent -ArgumentList $server, $eventSource
+        }
+        Catch 
+        {
+            Write-Host "Skipping ERROR while executing event source creation on $server :", $_.Exception.Message -foregroundcolor "red";
+        }
+	}
 }
 
 function HandleExitCode ()
@@ -103,7 +178,7 @@ function HandleExitCode ()
     }
 }
 
-$ErrorActionPreference = “Stop”
+$ErrorActionPreference = "Stop"
 
 $totalServers = $serverNames.Split(",").Count;
 
@@ -112,8 +187,18 @@ Write-Host "For", $totalServers, "servers" -foregroundcolor "green";
 
 $i = 1;
 $ok = 0;
+$currentDir = (Get-Location).Path;
+$onlineFile = $currentDir + "\NlbControl.Online"
 
- $serverNames.Split(",") | ForEach {
+if ($switchServerNames.length -gt 0) {
+	Out-File -FilePath $onlineFile
+	ExecuteSwitchOn $switchServerNames;
+	ExecuteSwitchOff $serverNames;
+} else {
+	Write-Host "Switch servers not set" -foregroundcolor "green";
+}
+
+$serverNames.Split(",") | ForEach {
     Write-Host "Start processing server", $_, "(" , $i, "/", $totalServers, ")" -foregroundcolor "green";
     $server = $_.Trim();
     $success = 1;
@@ -125,6 +210,9 @@ $ok = 0;
         ExecuteMsDeploy_Recycle
         HandleExitCode
         
+		#Ensure the event log source is created
+		ExecuteEventSourceCreation $server
+		
         ExecuteMsDeploy_Package
         HandleExitCode
 
@@ -158,6 +246,12 @@ $ok = 0;
     Write-Host "End processing server", $_
     $i = $i + 1
  }
+
+ if ($switchServerNames.length -gt 0) {
+	ExecuteSwitchOn $serverNames;
+	ExecuteSwitchOff $switchServerNames;
+	Remove-Item -Path $onlineFile
+}
 
 if ($ok -eq $totalServers)
 {
