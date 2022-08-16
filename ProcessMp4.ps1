@@ -8,4 +8,7 @@ for ($i=0; $i -lt $files.Count; $i++) {
     Write-Progress -Activity "Conversion in progress" -Status "$perc% Complete:" -PercentComplete $perc
 
     & ffmpeg -i $f.FullName -c:v libx265 -b:v 3500k "p\$name"
+	
+	# Copy metadata
+    & exiftool -overwrite_Original -TagsFromFile $f.FullName -All:All "p\$name"
 }
