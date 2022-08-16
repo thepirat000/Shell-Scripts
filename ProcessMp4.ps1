@@ -1,3 +1,7 @@
+# Will compress mp4 videos on the current folder and copy the output to a subfolder 
+# Keeping the same video dimension, dates and metadata
+# Will process only .mp4 video files > 1MB
+
 $files = Get-ChildItem -Path ./ | where-object {$_.Extension -eq ".mp4" -and $_.length -gt 1MB} | Sort-Object -Property Length
 for ($i=0; $i -lt $files.Count; $i++) {
     $f = $files[$i]
