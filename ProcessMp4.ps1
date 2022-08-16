@@ -6,9 +6,16 @@ for ($i=0; $i -lt $files.Count; $i++) {
 
     $perc = [math]::Round($i * 100 / $files.Count, 0)
     Write-Progress -Activity "Conversion in progress" -Status "$perc% Complete:" -PercentComplete $perc
+	$outFile = "p\$name"
 
-    & ffmpeg -i $f.FullName -c:v libx265 -b:v 3500k "p\$name"
+	# Process video
+    & ffmpeg -i $f.FullName -c:v libx265 -b:v 3500k $outFile
 	
 	# Copy metadata
-    & exiftool -overwrite_Original -TagsFromFile $f.FullName -All:All "p\$name"
+    & exiftool -overwrite_Original -TagsFromFile $f.FullName -All:All $outFile
+
+	# Copy file dates
+    (ls $outfile).CreationTime = (ls $f.FullName).CreationTime
+    (ls $outfile).LastWriteTime = (ls $f.FullName).LastWriteTime
+    (ls $outfile).LastAccessTime = (ls $f.FullName).LastAccessTime
 }
