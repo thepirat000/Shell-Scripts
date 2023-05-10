@@ -4,8 +4,10 @@ $targetRootDir = "C:\Temp"
 git status --porcelain | ForEach-Object { 
     $sourceFile = $_.Trim().SubString(1).Trim().Replace("/", "\")
     
-    $targetDir = $targetRootDir + "\" + $sourceFile.Substring(0, $sourceFile.LastIndexOf("\"))
-    $filename = $sourceFile.Substring($sourceFile.LastIndexOf("\") + 1)
+    $lastBackSlashIndex = $sourceFile.LastIndexOf("\");
+    $folder = if ($lastBackSlashIndex -eq -1) { "" } else { $sourceFile.Substring(0, $lastBackSlashIndex) }
+    $targetDir = $targetRootDir + "\" + $folder
+    $filename = if ($lastBackSlashIndex -eq -1) { $sourceFile } else { $sourceFile.Substring($lastBackSlashIndex + 1) }
     $targetFilePath = $targetDir + "\" + $filename;
     
     Write-Host $targetFilePath
