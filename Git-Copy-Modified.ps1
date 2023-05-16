@@ -11,6 +11,12 @@ git status --porcelain | ForEach-Object {
     $targetFilePath = $targetDir + "\" + $filename;
     
     Write-Host $targetFilePath
-    New-Item -ItemType File -Path $targetFilePath -Force
-    Copy-Item $sourceFile -Destination $targetDir
+
+    If (Test-Path -Path $sourceFile) {
+        New-Item -ItemType File -Path $targetFilePath -Force
+        Copy-Item $sourceFile -Destination $targetDir
+    } 
+    Else {
+        Write-Host $sourceFile, "Does not exists!" -ForegroundColor Yellow
+    }
 }
