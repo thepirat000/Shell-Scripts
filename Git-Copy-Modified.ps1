@@ -1,5 +1,19 @@
 # Will copy the added and modified files in the current local copy of a GIT repository to the specified target folder.
-$targetRootDir = "C:\Temp"
+if (-not(test-path .git)) {
+    Write-host "Not in a GIT repository" -ForegroundColor Yellow
+    return
+}
+
+$targetRootDir = (Split-Path -Path $pwd.Path -Parent) + "\" + (Split-Path -Path $pwd.Path -Leaf) + "_bkp_" + (Get-Date).ToString("yyyy-MM-dd_HHmmss")
+
+Write-host $targetRootDir -ForegroundColor Yellow
+
+if (test-path $targetRootDir) {
+    Write-host "Destination directory exists", $targetRootDir -ForegroundColor Yellow
+    return
+}
+
+New-Item -Path $targetRootDir -ItemType Directory
 
 git status --porcelain | ForEach-Object { 
     $sourceFile = $_.Trim().SubString(1).Trim().Replace("/", "\")
@@ -20,3 +34,9 @@ git status --porcelain | ForEach-Object {
         Write-Host $sourceFile, "Does not exists!" -ForegroundColor Yellow
     }
 }
+
+if (( Get-ChildItem $targetRootDir | Measure-Object ).Count -eq 0) {
+    Remove-Item -Path $targetRootDir
+}
+
+Write-Host $targetRootDir -ForegroundColor Green
